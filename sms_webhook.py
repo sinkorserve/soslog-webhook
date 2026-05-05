@@ -29,14 +29,21 @@ VALIDATE_TWILIO   = os.environ.get("VALIDATE_TWILIO", "true").lower() == "true"
 AUTO_REPLY        = "SOSLog received your message. Your record is saved. Reply STOP to opt out."
 
 # -- Firebase init --
-# Reads from FIREBASE_CREDENTIALS_JSON env var (full JSON string)
-# Falls back to local serviceAccountKey.json for local dev
+# Reads credentials exclusively from FIREBASE_CREDENTIALS_JSON env var.
+# Raises a clear error at startup if the variable is missing or empty so the
+# app never attempts to load a local file that won't exist in production.
+import logging as _logging
 if not firebase_admin._apps:
-    creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-    if creds_json:
-        cred = credentials.Certificate(json.loads(creds_json))
-    else:
-        cred = credentials.Certificate("serviceAccountKey.json")
+    creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON", "").strip()
+    if not creds_json:
+        raise EnvironmentError(
+            "FIREBASE_CREDENTIALS_JSON environment variable is not set or is empty. "
+            "Set it to the full Firebase service account JSON string."
+        )
+    _logging.getLogger(__name__).info(
+        "Firebase: loading credentials from FIREBASE_CREDENTIALS_JSON env var"
+    )
+    cred = credentials.Certificate(json.loads(creds_json))
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
