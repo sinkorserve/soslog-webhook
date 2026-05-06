@@ -152,7 +152,7 @@ db.collection('users').document(PHONE).collection('profile').document('data').se
     'uid':         'seeded',  # Will be updated on first login
     'phone':       PHONE,
     'country':     'United States',
-    'plan':        'basic',
+    'plan':        'free',
     'status':      'active',
     'joinedAt':    firestore.SERVER_TIMESTAMP,
     'joinedLocal': datetime.now(timezone.utc).isoformat(),
@@ -204,7 +204,7 @@ for i, (timestamp, body, city, state) in enumerate(INCIDENTS):
     records_ref.document(msg_id).set(record)
     # Write to flat path (new - for easier querying)
     flat_ref.document(msg_id).set(record)
-    print(f"  OK {timestamp.strftime('%b %d %Y %H:%M')} - {body[:60]}...")
+    print(f"  ✅ {timestamp.strftime('%b %d %Y %H:%M')} — {body[:60]}...")
 
 print()
 print(f"Done! {len(INCIDENTS)} records written to Firestore.")
