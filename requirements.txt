@@ -3,3 +3,4 @@ twilio==9.3.3
 firebase-admin==6.5.0
 requests==2.32.3
 gunicorn==22.0.0
+stripe==9.9.0

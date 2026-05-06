@@ -146,9 +146,10 @@ records_ref = (
       .collection('records')
 )
 
-# Ensure user profile exists
+# Ensure user profile exists with real structure
+# NOTE: uid field will be 'seeded' until user logs in and updates it
 db.collection('users').document(PHONE).collection('profile').document('data').set({
-    'uid':         'seeded',
+    'uid':         'seeded',  # Will be updated on first login
     'phone':       PHONE,
     'country':     'United States',
     'plan':        'basic',
@@ -164,8 +165,14 @@ db.collection('users').document(PHONE).collection('emails').document(EMAIL_KEY).
     'primary':  True,
 }, merge=True)
 
+# Write to BOTH paths so both query strategies find the records:
+# 1. users/{phone}/emails/{email}/records/{id}  (nested - original)
+# 2. users/{phone}/records/{id}                  (flat - new query strategy)
+flat_ref = db.collection('users').document(PHONE).collection('records')
+
 print(f"Writing {len(INCIDENTS)} incident records to Firestore...")
-print(f"Path: users/{PHONE}/emails/{EMAIL_KEY}/records/")
+print(f"Nested path: users/{PHONE}/emails/{EMAIL_KEY}/records/")
+print(f"Flat path:   users/{PHONE}/records/")
 print()
 
 for i, (timestamp, body, city, state) in enumerate(INCIDENTS):
@@ -174,6 +181,7 @@ for i, (timestamp, body, city, state) in enumerate(INCIDENTS):
         'body':           body,
         'messageSid':     msg_id,
         'from':           PHONE,
+        'email':          EMAIL,
         'timestamp':      timestamp,
         'timestampLocal': timestamp.isoformat(),
         'source':         'sms',
@@ -183,7 +191,7 @@ for i, (timestamp, body, city, state) in enumerate(INCIDENTS):
             'state':            state,
             'country':          'US',
             'zip':              '',
-            'lat':              32.7357,   # Arlington TX
+            'lat':              32.7357,
             'lng':              -97.1081,
             'formatted':        f'{city}, {state}',
             'precision':        'city',
@@ -192,7 +200,10 @@ for i, (timestamp, body, city, state) in enumerate(INCIDENTS):
         'hasMedia':  False,
         'mediaUrls': [],
     }
+    # Write to nested path (original)
     records_ref.document(msg_id).set(record)
+    # Write to flat path (new - for easier querying)
+    flat_ref.document(msg_id).set(record)
     print(f"  OK {timestamp.strftime('%b %d %Y %H:%M')} - {body[:60]}...")
 
 print()

@@ -1,1 +1,22 @@
 {"type": "service_account", "project_id": "soslog-v1", "private_key_id": "dd1e45281a5f479ab3c529bc5901a512398dfd2d", "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDdmqWqbKZI5bT2\nXTgeEt4tOJS12EAzSco5IrT2CVHjjdunjugiGLs7GwepOk08I8LhQB5xa0fiRkQ9\nqTnwNJ8ZekJND6i8igRQ4uDAdFEXspAtKeGj6cNeMph+XphUVWT9WxcHweHwyYGf\nsfne9XhwIItXRsJLXik62gUaUlXbbKhjdXSM4ZK3KUci4Z6sLHeqY0JrI0hw8Kp4\nxtQQSbkmVDJz1hlIH7+wW+qCPlZTDIgdOnZIyAiiq6ItSoPLs6lCtIqEZi+x4QEH\nsUymcyFSAPu1EuYwatToEZrx+G9Dam6x6YrYHIN44GCYHkdH5nhfeT9fk2oY7gME\niOdPptutAgMBAAECggEABxJOT7KH9OLqNkzSA6bOstimjelnlQ/5bDX5NdaSzEm/\n+YzPbFLVf43iXc7FgfauCQQoZInLwWdo+f5RWOLWtHPR6nNmXXBsxAwnp62w0zOD\n6hR3PLuy5Q5OMzwkCHye+iLi5BMown4tXzaJGy4wDSleahTQ7caNsnocXMohCnib\nFT8QLNC1Z9e+aKzDkwkbPlsX3ByCiR20WhVKwe7LjBNbFz62lJu13cWfvCwdDVge\ns5VZneO+YVDmqShsLBxkByS4XlMXvu9nifD5hlaeZH44gEtK1bX3fe571+wMbicl\nbOp+2Kyb9sHJ4VswLk2U0CkF5UY5k4f7s7nuZYpksQKBgQDxfcdup/cYypj6T7hW\nMU6YLRk8qVZaaz/nKzN/XZiJ9RFvBKF33PI5ROHkBMLGrV0DLJ1NyK9EPToTJtR0\n0DSBDc8woX9+BOlIEGkBfbQm/4v4PO/P6wfB/+4er+l8BJO91tKSR8Sd2AEmtPUz\nAzUe6sRlhTDzHfUlqvH9V1TafQKBgQDq6v7YdJQ8tmRMMk9clqztUnKqwk9677pM\nIJXJEwOc5Z041NN3cwUtKIzB+DIt14eHdZtUAWj6jAMiTwKHLUQzCAqX1XDTafJp\n+R8LnJBa1WV49Jjdf5QFpF2NlPlm8Uyz3WCK6Cb1pCenkSnGLQAdfkHN68UJZ5P7\nm5rgkvWc8QKBgQDTwjOrOOZYeu+CL325NytwDbvfka4DQ6CZmSxjNzOXZaqP60Ob\n08cjqN9cD0Cs70BslCasGpp2ACp4uMf8VsZzlCRmxHcDjlLxulIZ2JysxdF7MBQq\nAjKfT0kC58aZ1XmoMkQbuYsTzmHUC0IoJVvjbIIjc5Pk3BQnn6rrODVUEQKBgAM+\ndYB1s6pW9nGa7D+iEQdB8TVsc36GGvN8K7VYHt+myBIF1lm66+JgwfjXvZGmfUeg\nlyGE13dGQbDSmH1XYa62uLa6CtHQj7lo6EXXxqKKedk+v3Gnllqxl10iJoOGZ4HA\nV9nzNL6FosqMlaAX9P1zReNbEyB7Hq8FyhC51sxxAoGBALIZ0EAk3+ineRjyvl7E\nsCg0K9NWNjtThk/0d2YVFZ+/sOG+ILGPRq9TuDy8+03c4TrZ8urZ27PJJlIyDrQE\nFz52RFz3454R4xh/QC50DzJQMVYEhsMz8AsUbsMngYB9CUt30mjatr87m4VFOTBC\n/9c4+FH/Hk71YEBIPXdPWi/P\n-----END PRIVATE KEY-----\n", "client_email": "firebase-adminsdk-fbsvc@soslog-v1.iam.gserviceaccount.com", "client_id": "105834299851681616691", "auth_uri": "https://accounts.google.com/o/oauth2/auth", "token_uri": "https://oauth2.googleapis.com/token", "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs", "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40soslog-v1.iam.gserviceaccount.com", "universe_domain": "googleapis.com"}
+
+SOSLogs Base
+for
+$4.99 USD / month
+https://buy.stripe.com/00w5kC0QR8yn86LeYtew802
+
+
+SOSLogs Pro product
+for
+$14.99 USD / month
+
+https://buy.stripe.com/3cI14m4338yn72H4jPew803
+
+
+SOSLogs Premium product
+for
+$19.99 USD / month
+https://buy.stripe.com/14A4gy1UV8ynaeTaIdew804
+
+
+Google Maps API: AIzaSyC8GDl5em6tzE4Kf2nomqLGycWMIAlPf_4
