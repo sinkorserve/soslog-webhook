@@ -22,6 +22,7 @@ import os, re, json
 import requests as http
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 import stripe
 
 app = Flask(__name__)
@@ -55,7 +56,9 @@ def find_phone_by_email(email):
     """Find phone number in Firestore by matching email in emails subcollection."""
     try:
         # Query collectionGroup emails where email == customer email
-        email_docs = db.collection_group('emails').where('email', '==', email).get()
+        email_docs = db.collection_group('emails').where(
+        filter=firestore.FieldFilter('email', '==', email)
+    ).get()
         for doc in email_docs:
             # Path: users/{phone}/emails/{emailKey}
             phone = doc.reference.parent.parent.id
