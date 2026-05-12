@@ -272,11 +272,12 @@ def valid_twilio(req):
                       req.headers.get("X-Twilio-Signature", ""))
 
 def save_analysis_record(phone, analysis, original_text):
-    """Save confirmed analysis to Firestore."""
-    email_key  = find_email_key(phone)
-    msg_id     = f"analysis_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    """Save confirmed analysis to Firestore flat records path only.
+    Always writes to users/{phone}/records — never to nested email path
+    to avoid saving under the wrong email subcollection.
+    """
+    msg_id = f"analysis_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
-    # Build body combining original text and structured analysis
     body = f"""ANALYZED DOCUMENT
 
 Original Text:
@@ -296,16 +297,28 @@ Devil's Advocate: {analysis.get('devils_advocate', '')}
 
 Key Facts: {', '.join(analysis.get('key_facts', []))}"""
 
+    # Look up email for this phone to store in record
+    email_for_record = ''
+    try:
+        email_docs = db.collection('users').document(phone).collection('emails').stream()
+        for d in email_docs:
+            if d.data().get('primary'):
+                email_for_record = d.data().get('email', '')
+                break
+    except Exception:
+        pass
+
     record = {
-        'body':             body,
-        'messageSid':       msg_id,
-        'from':             phone,
-        'timestamp':        firestore.SERVER_TIMESTAMP,
-        'timestampLocal':   datetime.now(timezone.utc).isoformat(),
-        'source':           'claude_analysis',
-        'category':         analysis.get('category', 'legal'),
-        'analysisData':     analysis,
-        'originalText':     original_text,
+        'body':           body,
+        'messageSid':     msg_id,
+        'from':           phone,
+        'email':          email_for_record,
+        'timestamp':      firestore.SERVER_TIMESTAMP,
+        'timestampLocal': datetime.now(timezone.utc).isoformat(),
+        'source':         'claude_analysis',
+        'category':       analysis.get('category', 'legal'),
+        'analysisData':   analysis,
+        'originalText':   original_text,
         'location': {
             'city': '', 'state': '', 'country': 'US',
             'lat': None, 'lng': None,
@@ -316,9 +329,8 @@ Key Facts: {', '.join(analysis.get('key_facts', []))}"""
         'mediaUrls': [],
     }
 
-    # Write to both paths
+    # Write ONLY to flat path — avoids email subcollection ambiguity
     db.collection('users').document(phone).collection('records').document(msg_id).set(record)
-    db.collection('users').document(phone).collection('emails').document(email_key).collection('records').document(msg_id).set(record)
     app.logger.info(f"Analysis saved: users/{phone}/records/{msg_id}")
     return msg_id
 
@@ -510,6 +522,7 @@ def confirm_analysis():
     phone         = data.get("phone", "").strip()
     analysis      = data.get("analysis", {})
     original_text = data.get("text", "").strip()
+    user_email    = data.get("email", "").strip()
 
     if not phone or not analysis:
         return jsonify({"error": "Missing phone or analysis"}), 400
