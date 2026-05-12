@@ -21,7 +21,6 @@ Environment variables:
 """
 
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
 from twilio.rest import Client as TwilioClient
@@ -35,7 +34,27 @@ import stripe
 import anthropic
 
 app = Flask(__name__)
-CORS(app, origins=["https://soslogs.org", "https://*.vercel.app", "http://localhost:3000"])
+
+# Handle CORS manually — more reliable than flask-cors for Railway
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin', '')
+    allowed = ['https://soslogs.org', 'https://soslogs-git-dev-sinkorserves-projects.vercel.app']
+    if origin in allowed or '.vercel.app' in origin:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Max-Age'] = '86400'
+    return response
+
+@app.route('/analyze', methods=['OPTIONS'])
+def analyze_options():
+    return '', 204
+
+@app.route('/analyze/confirm', methods=['OPTIONS'])
+def analyze_confirm_options():
+    return '', 204
+
 
 # -- Config --
 TWILIO_AUTH_TOKEN     = os.environ.get("TWILIO_AUTH_TOKEN", "")
