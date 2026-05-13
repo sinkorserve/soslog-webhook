@@ -496,14 +496,76 @@ def analyze_document():
     if not phone:
         return jsonify({"error": "No phone provided"}), 400
 
-    analysis = analyze_with_claude(text)
+    # Handle FILE_BASE64 uploads — extract text via Claude vision
+    extracted_text = text
+    if text.startswith("FILE_BASE64:"):
+        try:
+            parts = text.split(":", 2)
+            media_type = parts[1]  # e.g. application/pdf or image/jpeg
+            base64_data = parts[2]
+
+            app.logger.info(f"Processing file upload: {media_type}")
+
+            # Send to Claude as a document/image for text extraction
+            if media_type == "application/pdf":
+                extract_msg = claude_client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=4000,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "document",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "application/pdf",
+                                    "data": base64_data
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": "Please extract and return all the text content from this document exactly as it appears."
+                            }
+                        ]
+                    }]
+                )
+            else:
+                # Image file
+                extract_msg = claude_client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=4000,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": base64_data
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": "Please extract and return all the text content from this image exactly as it appears."
+                            }
+                        ]
+                    }]
+                )
+            extracted_text = extract_msg.content[0].text
+            app.logger.info(f"Extracted {len(extracted_text)} chars from file")
+        except Exception as e:
+            app.logger.error(f"File extraction error: {e}")
+            return jsonify({"error": f"Could not extract text from file: {str(e)}"}), 500
+
+    analysis = analyze_with_claude(extracted_text)
     if not analysis:
         return jsonify({"error": "Analysis failed"}), 500
 
     return jsonify({
         "status":   "ok",
         "analysis": analysis,
-        "text":     text,
+        "text":     extracted_text,  # Return extracted text not base64
         "phone":    phone
     }), 200
 
