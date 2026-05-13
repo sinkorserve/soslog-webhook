@@ -65,6 +65,7 @@ STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 ANTHROPIC_API_KEY     = os.environ.get("ANTHROPIC_API_KEY", "")
 TWILIO_NUMBER         = "+18887995647"
+VERIFY_SERVICE_SID    = os.environ.get("TWILIO_VERIFY_SERVICE_SID", "")
 
 stripe.api_key    = STRIPE_SECRET_KEY
 claude_client     = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -297,16 +298,10 @@ Devil's Advocate: {analysis.get('devils_advocate', '')}
 
 Key Facts: {', '.join(analysis.get('key_facts', []))}"""
 
-    # Look up email for this phone to store in record
-    email_for_record = ''
-    try:
-        email_docs = db.collection('users').document(phone).collection('emails').stream()
-        for d in email_docs:
-            if d.data().get('primary'):
-                email_for_record = d.data().get('email', '')
-                break
-    except Exception:
-        pass
+    # Use email passed from frontend — most reliable source
+    # Frontend gets it directly from Firebase Auth currentUser.email
+    email_for_record = user_email if user_email else ''
+    app.logger.info(f"Analysis record email: {email_for_record}")
 
     record = {
         'body':           body,
@@ -533,6 +528,69 @@ def confirm_analysis():
     except Exception as e:
         app.logger.error(f"confirm_analysis error: {e}")
         return jsonify({"error": str(e)}), 500
+
+# ══════════════════════════════════════════════════════════════
+# TWILIO VERIFY OTP ENDPOINTS
+# ══════════════════════════════════════════════════════════════
+
+@app.route("/verify/send", methods=["POST", "OPTIONS"])
+def verify_send():
+    """Send OTP to phone number via Twilio Verify."""
+    if request.method == "OPTIONS":
+        return '', 204
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    phone = data.get("phone", "").strip()
+    if not phone:
+        return jsonify({"error": "Phone number required"}), 400
+
+    # Only allow US numbers
+    if not phone.startswith("+1") or len(phone.replace("+1","").replace(" ","").replace("-","")) != 10:
+        return jsonify({"error": "Only US phone numbers (+1) are supported"}), 400
+
+    if not VERIFY_SERVICE_SID:
+        return jsonify({"error": "Verify service not configured"}), 500
+
+    try:
+        verification = twilio_client.verify.v2.services(VERIFY_SERVICE_SID)             .verifications.create(to=phone, channel="sms")
+        app.logger.info(f"OTP sent to {phone} - status: {verification.status}")
+        return jsonify({"status": "ok", "message": "Verification code sent"}), 200
+    except Exception as e:
+        app.logger.error(f"Twilio Verify send error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/verify/check", methods=["POST", "OPTIONS"])
+def verify_check():
+    """Check OTP code entered by user."""
+    if request.method == "OPTIONS":
+        return '', 204
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    phone = data.get("phone", "").strip()
+    code  = data.get("code", "").strip()
+
+    if not phone or not code:
+        return jsonify({"error": "Phone and code required"}), 400
+
+    if not VERIFY_SERVICE_SID:
+        return jsonify({"error": "Verify service not configured"}), 500
+
+    try:
+        check = twilio_client.verify.v2.services(VERIFY_SERVICE_SID)             .verification_checks.create(to=phone, code=code)
+        app.logger.info(f"OTP check for {phone} - status: {check.status}")
+        if check.status == "approved":
+            return jsonify({"status": "approved"}), 200
+        else:
+            return jsonify({"status": "rejected", "error": "Invalid or expired code"}), 400
+    except Exception as e:
+        app.logger.error(f"Twilio Verify check error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 # ══════════════════════════════════════════════════════════════
 # HEALTH CHECK
