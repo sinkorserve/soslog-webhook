@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import uuid
 
 # ── Firebase init ─────────────────────────────────────────────
-cred = credentials.Certificate("serviceAccountKey.json")
+cred = credentials.Certificate("serviceAccountKey-dev.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 

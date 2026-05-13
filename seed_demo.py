@@ -12,7 +12,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timezone
 
-cred = credentials.Certificate("serviceAccountKey.json")
+cred = credentials.Certificate("serviceAccountKey-dev.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
