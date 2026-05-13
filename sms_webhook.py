@@ -272,12 +272,13 @@ def valid_twilio(req):
     return v.validate(req.url, req.form.to_dict(),
                       req.headers.get("X-Twilio-Signature", ""))
 
-def save_analysis_record(phone, analysis, original_text):
+def save_analysis_record(phone, analysis, original_text, email=''):
     """Save confirmed analysis to Firestore flat records path only.
     Always writes to users/{phone}/records — never to nested email path
     to avoid saving under the wrong email subcollection.
     """
     msg_id = f"analysis_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    email_for_record = email  # Use email passed from frontend
 
     body = f"""ANALYZED DOCUMENT
 
@@ -298,9 +299,6 @@ Devil's Advocate: {analysis.get('devils_advocate', '')}
 
 Key Facts: {', '.join(analysis.get('key_facts', []))}"""
 
-    # Use email passed from frontend — most reliable source
-    # Frontend gets it directly from Firebase Auth currentUser.email
-    email_for_record = user_email if user_email else ''
     app.logger.info(f"Analysis record email: {email_for_record}")
 
     record = {
@@ -585,7 +583,7 @@ def confirm_analysis():
         return jsonify({"error": "Missing phone or analysis"}), 400
 
     try:
-        msg_id = save_analysis_record(phone, analysis, original_text)
+        msg_id = save_analysis_record(phone, analysis, original_text, user_email)
         return jsonify({"status": "ok", "recordId": msg_id}), 200
     except Exception as e:
         app.logger.error(f"confirm_analysis error: {e}")
