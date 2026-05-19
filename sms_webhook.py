@@ -45,6 +45,8 @@ def add_cors_headers(response):
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         response.headers['Access-Control-Max-Age'] = '86400'
+        if request.method == 'OPTIONS':
+            response.status_code = 200
     return response
 
 @app.route('/analyze', methods=['OPTIONS'])
@@ -54,6 +56,8 @@ def analyze_options():
 @app.route('/analyze/confirm', methods=['OPTIONS'])
 def analyze_confirm_options():
     return '', 204
+
+
 
 
 # -- Config --
@@ -438,9 +442,19 @@ def inbound_sms():
     # ── Standard SMS log: save directly ────────────────────────
     extracted_address = extract_address(body)
     if extracted_address:
+        # User included an address — geocode it precisely
         geo = geocode(extracted_address)
+        loc_city    = geo["formatted"].split(",")[0] if geo else city
+        loc_state   = state
+        loc_formatted = geo["formatted"] if geo else extracted_address
+        loc_precision = "address"
     else:
-        geo = geocode(city, state, country)
+        # No address in message — don't use Twilio's often-wrong city metadata
+        geo = None
+        loc_city    = ""
+        loc_state   = ""
+        loc_formatted = ""
+        loc_precision = "unknown"
 
     record = {
         "body":           body,
@@ -450,14 +464,14 @@ def inbound_sms():
         "timestampLocal": datetime.now(timezone.utc).isoformat(),
         "source":         "sms",
         "location": {
-            "city":             city,
-            "state":            state,
+            "city":             loc_city,
+            "state":            loc_state,
             "country":          country,
-            "zip":              zipcode,
-            "lat":              geo["lat"]       if geo else None,
-            "lng":              geo["lng"]       if geo else None,
-            "formatted":        geo["formatted"] if geo else f"{city}, {state}".strip(", "),
-            "precision":        geo.get("precision", "city") if geo else "unknown",
+            "zip":              zipcode if extracted_address else "",
+            "lat":              geo["lat"] if geo else None,
+            "lng":              geo["lng"] if geo else None,
+            "formatted":        loc_formatted,
+            "precision":        loc_precision,
             "extractedAddress": extracted_address,
         },
         "hasMedia":  n_media > 0,
@@ -472,7 +486,8 @@ def inbound_sms():
     except Exception as e:
         app.logger.error(f"Firestore write failed: {e}")
 
-    resp.message("SOSLog received. Your record is saved. Reply STOP to opt out.")
+    location_hint = " Include your address for accurate location tracking." if not extracted_address else ""
+    resp.message(f"SOSLog received. Your record is saved.{location_hint} Reply STOP to opt out.")
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 # ══════════════════════════════════════════════════════════════
@@ -649,6 +664,55 @@ def verify_check():
             return jsonify({"status": "rejected", "error": "Invalid or expired code"}), 400
     except Exception as e:
         app.logger.error(f"Twilio Verify check error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════
+# CLAUDE INSIGHTS ENDPOINT
+# ══════════════════════════════════════════════════════════════
+
+@app.route("/insights", methods=["POST", "OPTIONS"])
+def insights():
+    """Chat with Claude about user's own log data."""
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        return response
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    phone       = data.get("phone", "").strip()
+    records_ctx = data.get("records", "")
+    messages    = data.get("messages", [])
+
+    if not phone or not messages:
+        return jsonify({"error": "Missing phone or messages"}), 400
+
+    system_prompt = f"""You are a helpful documentation analyst assistant for SOSLogs, a personal safety documentation platform.
+You have access to the user's incident logs and help them understand patterns, generate insights, and assess their documentation strength.
+
+The user's log data summary:
+{records_ctx}
+
+Guidelines:
+- Be concise, factual, and supportive
+- Reference specific dates, people, or locations from the logs when relevant
+- Assess documentation strength using: Specificity, Consistency, Corroboration, Timeline, Patterns, Objectivity
+- Never make legal conclusions — suggest consulting an attorney for legal advice
+- Format responses clearly with line breaks for readability"""
+
+    try:
+        message = claude_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1000,
+            system=system_prompt,
+            messages=messages
+        )
+        reply = message.content[0].text
+        app.logger.info(f"Insights response for {phone}: {len(reply)} chars")
+        return jsonify({"reply": reply}), 200
+    except Exception as e:
+        app.logger.error(f"Insights error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
