@@ -385,7 +385,15 @@ def inbound_sms():
     zipcode = request.form.get("FromZip", "")
     n_media = int(request.form.get("NumMedia", 0))
 
+    app.logger.info(f"Inbound SMS — From: '{phone}' Body: '{body[:50]}' SID: {sid}")
+
     resp = MessagingResponse()
+
+    # Guard: reject if phone is empty
+    if not phone:
+        app.logger.error(f"Inbound SMS has empty From field — raw form: {dict(request.form)}")
+        resp.message("Unable to process — sender phone number not detected.")
+        return str(resp), 200, {"Content-Type": "text/xml"}
 
     # ── CONFIRM command: save pending analysis ──────────────────
     if body.upper().strip() == "CONFIRM":
