@@ -724,6 +724,78 @@ Guidelines:
         return jsonify({"error": str(e)}), 500
 
 
+
+# ══════════════════════════════════════════════════════════════
+# ACCOUNT — UPDATE PHONE NUMBER
+# ══════════════════════════════════════════════════════════════
+
+@app.route("/account/update-phone", methods=["POST", "OPTIONS"])
+def update_phone():
+    """Migrate all user data from old phone to new phone number."""
+    if request.method == "OPTIONS":
+        return '', 204
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    old_phone = data.get("old_phone", "").strip()
+    new_phone = data.get("new_phone", "").strip()
+    email     = data.get("email", "").strip()
+
+    if not old_phone or not new_phone:
+        return jsonify({"error": "Missing phone numbers"}), 400
+    if old_phone == new_phone:
+        return jsonify({"error": "New number is same as current"}), 400
+
+    app.logger.info(f"Phone migration: {old_phone} → {new_phone}")
+
+    try:
+        # 1. Copy profile
+        old_profile_ref = db.collection('users').document(old_phone).collection('profile').document('data')
+        old_profile = old_profile_ref.get()
+        if old_profile.exists:
+            profile_data = old_profile.to_dict()
+            profile_data['phone'] = new_phone
+            db.collection('users').document(new_phone).collection('profile').document('data').set(profile_data)
+
+        # 2. Copy emails subcollection
+        old_emails = db.collection('users').document(old_phone).collection('emails').stream()
+        for email_doc in old_emails:
+            db.collection('users').document(new_phone).collection('emails').document(email_doc.id).set(email_doc.to_dict())
+
+        # 3. Copy all records
+        old_records = db.collection('users').document(old_phone).collection('records').stream()
+        migrated = 0
+        for record in old_records:
+            record_data = record.to_dict()
+            record_data['from'] = new_phone
+            db.collection('users').document(new_phone).collection('records').document(record.id).set(record_data)
+            migrated += 1
+
+        # 4. Delete old data
+        # Delete old records
+        old_records2 = db.collection('users').document(old_phone).collection('records').stream()
+        for record in old_records2:
+            record.reference.delete()
+
+        # Delete old emails
+        old_emails2 = db.collection('users').document(old_phone).collection('emails').stream()
+        for email_doc in old_emails2:
+            email_doc.reference.delete()
+
+        # Delete old profile
+        old_profile_ref.delete()
+
+        # Delete old user document
+        db.collection('users').document(old_phone).delete()
+
+        app.logger.info(f"Migration complete: {migrated} records moved")
+        return jsonify({"status": "ok", "migrated": migrated}), 200
+
+    except Exception as e:
+        app.logger.error(f"Migration error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 # ══════════════════════════════════════════════════════════════
 # HEALTH CHECK
 # ══════════════════════════════════════════════════════════════
