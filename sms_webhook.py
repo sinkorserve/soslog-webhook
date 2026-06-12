@@ -816,9 +816,8 @@ def send_email(to_email, subject, html_body):
         msg['From']    = f"SOSLogs <{ZOHO_EMAIL}>"
         msg['To']      = to_email
         msg.attach(MIMEText(html_body, 'html'))
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls()
+        # Use SSL on port 465 (Railway blocks 587)
+        with smtplib.SMTP_SSL(SMTP_HOST, 465) as server:
             server.login(ZOHO_EMAIL, ZOHO_PASSWORD)
             server.sendmail(ZOHO_EMAIL, to_email, msg.as_string())
         app.logger.info(f"Email sent to {to_email}: {subject}")
