@@ -77,6 +77,11 @@ VERIFY_SERVICE_SID    = os.environ.get("TWILIO_VERIFY_SERVICE_SID", "")
 
 stripe.api_key    = STRIPE_SECRET_KEY
 claude_client     = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+ZOHO_EMAIL    = os.environ.get("ZOHO_EMAIL", "admin@soslogs.org")
+ZOHO_PASSWORD = os.environ.get("ZOHO_PASSWORD", "")
+SMTP_HOST     = "smtp.zoho.com"
+SMTP_PORT     = 587
 twilio_client     = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 # -- Firebase init --
