@@ -24,7 +24,11 @@ from flask import Flask, request, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
 from twilio.rest import Client as TwilioClient
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import threading
 import os, re, json, uuid
 import requests as http
 import firebase_admin
@@ -494,8 +498,8 @@ def inbound_sms():
     except Exception as e:
         app.logger.error(f"Firestore write failed: {e}")
 
-    location_hint = " Include your address for accurate location tracking." if not extracted_address else ""
-    resp.message(f"SOSLog received. Your record is saved.{location_hint} Reply STOP to opt out.")
+    # No immediate SMS reply for standard logs — user gets daily email summary
+    app.logger.info(f"Log saved for {phone} — daily email will be sent at 9 PM")
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 # ══════════════════════════════════════════════════════════════
@@ -795,6 +799,216 @@ def update_phone():
     except Exception as e:
         app.logger.error(f"Migration error: {e}")
         return jsonify({"error": str(e)}), 500
+
+# ══════════════════════════════════════════════════════════════
+# EMAIL — DAILY SUMMARY + WEEKLY DIGEST
+# ══════════════════════════════════════════════════════════════
+
+def send_email(to_email, subject, html_body):
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From']    = f"SOSLogs <{ZOHO_EMAIL}>"
+        msg['To']      = to_email
+        msg.attach(MIMEText(html_body, 'html'))
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(ZOHO_EMAIL, ZOHO_PASSWORD)
+            server.sendmail(ZOHO_EMAIL, to_email, msg.as_string())
+        app.logger.info(f"Email sent to {to_email}: {subject}")
+        return True
+    except Exception as e:
+        app.logger.error(f"Email send error to {to_email}: {e}")
+        return False
+
+
+def get_user_email(phone):
+    try:
+        docs = db.collection('users').document(phone).collection('emails').stream()
+        first = None
+        for doc in docs:
+            data = doc.to_dict()
+            if data.get('primary'):
+                return data.get('email', '')
+            if not first:
+                first = data.get('email', '')
+        return first or ''
+    except Exception as e:
+        app.logger.error(f"get_user_email error for {phone}: {e}")
+        return ''
+
+
+def build_daily_email(phone, records, date_str):
+    count = len(records)
+    rows = ''
+    for r in records:
+        ts = (r.get('timestampLocal') or '')[:16].replace('T', ' ') or 'Unknown'
+        body = (r.get('body') or r.get('message') or '')[:120]
+        if body.startswith('ANALYZED DOCUMENT'):
+            body = '[Document Analysis]'
+        loc = (r.get('location') or {}).get('formatted', '')
+        loc_html = f'<span style="color:#64748b;font-size:11px;"> &middot; {loc}</span>' if loc else ''
+        rows += (
+            '<tr><td style="padding:10px 0;border-bottom:1px solid #e2e8f0;font-size:13px;color:#0f172a;vertical-align:top;">'
+            f'<div style="color:#64748b;font-size:11px;margin-bottom:3px;">{ts}{loc_html}</div>'
+            f'<div>{body}</div></td></tr>'
+        )
+    return (
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
+        '<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,Helvetica Neue,Arial,sans-serif;">'
+        '<div style="max-width:560px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">'
+        '<div style="background:#0f172a;padding:24px 28px;">'
+        '<span style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">'
+        '<span style="color:#c41e3a;">SOS</span><span style="color:#1db87a;">Logs</span></span>'
+        '<span style="color:#64748b;font-size:13px;margin-left:8px;">Daily Summary</span></div>'
+        '<div style="padding:24px 28px;">'
+        f'<div style="font-size:22px;font-weight:700;color:#0f172a;margin-bottom:4px;">{count} log{"s" if count != 1 else ""} recorded</div>'
+        f'<div style="font-size:13px;color:#64748b;margin-bottom:20px;">{date_str}</div>'
+        f'<table style="width:100%;border-collapse:collapse;">{rows}</table>'
+        '<div style="margin-top:24px;text-align:center;">'
+        '<a href="https://soslogs.org" style="display:inline-block;background:#1db87a;color:#000;font-weight:700;font-size:13px;padding:10px 24px;border-radius:8px;text-decoration:none;">View Full Dashboard</a>'
+        '</div></div>'
+        '<div style="padding:16px 28px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">'
+        'SOSLogs &middot; Athens Innovation and Development LLC</div>'
+        '</div></body></html>'
+    )
+
+
+def build_weekly_email(phone, records, week_str):
+    count = len(records)
+    try:
+        records_ctx = '\n'.join([
+            f"[{(r.get('timestampLocal') or '')[:10]}] {(r.get('body') or r.get('message') or '')[:200]}"
+            for r in records[:50]
+        ])
+        msg = claude_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=400,
+            messages=[{"role": "user", "content": (
+                "Summarize this week's incident logs in 3-4 sentences. "
+                "Be factual and note any patterns. No legal advice.\n\n"
+                f"Logs:\n{records_ctx}"
+            )}]
+        )
+        summary_text = msg.content[0].text
+    except Exception as e:
+        app.logger.error(f"Weekly Claude error: {e}")
+        summary_text = f"{count} incidents documented this week."
+
+    return (
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"></head>'
+        '<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,Helvetica Neue,Arial,sans-serif;">'
+        '<div style="max-width:560px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">'
+        '<div style="background:#0f172a;padding:24px 28px;">'
+        '<span style="font-size:20px;font-weight:800;color:#ffffff;">'
+        '<span style="color:#c41e3a;">SOS</span><span style="color:#1db87a;">Logs</span></span>'
+        '<span style="color:#64748b;font-size:13px;margin-left:8px;">Weekly Digest</span></div>'
+        '<div style="padding:24px 28px;">'
+        f'<div style="font-size:22px;font-weight:700;color:#0f172a;margin-bottom:4px;">{count} log{"s" if count != 1 else ""} this week</div>'
+        f'<div style="font-size:13px;color:#64748b;margin-bottom:20px;">{week_str}</div>'
+        f'<div style="background:#f8fafc;border-left:3px solid #1db87a;padding:14px 16px;border-radius:0 8px 8px 0;font-size:13px;color:#0f172a;line-height:1.7;margin-bottom:16px;">{summary_text}</div>'
+        '<div style="margin-top:24px;text-align:center;">'
+        '<a href="https://soslogs.org" style="display:inline-block;background:#1db87a;color:#000;font-weight:700;font-size:13px;padding:10px 24px;border-radius:8px;text-decoration:none;">View Full Dashboard</a>'
+        '</div></div>'
+        '<div style="padding:16px 28px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">'
+        'SOSLogs &middot; Athens Innovation and Development LLC</div>'
+        '</div></body></html>'
+    )
+
+
+def send_daily_summaries():
+    app.logger.info("Daily summary job started")
+    today = datetime.now(timezone.utc).date()
+    today_str = today.isoformat()
+    sent = 0
+    try:
+        for user_doc in db.collection('users').stream():
+            phone = user_doc.id
+            if not phone.startswith('+'):
+                continue
+            try:
+                todays = [
+                    r.to_dict() for r in
+                    db.collection('users').document(phone).collection('records').stream()
+                    if (r.to_dict().get('timestampLocal') or '')[:10] == today_str
+                ]
+                if not todays:
+                    continue
+                email = get_user_email(phone)
+                if not email:
+                    continue
+                date_display = today.strftime('%A, %B %d, %Y')
+                html = build_daily_email(phone, todays, date_display)
+                if send_email(email, f"SOSLogs Daily Summary - {date_display}", html):
+                    sent += 1
+            except Exception as e:
+                app.logger.error(f"Daily summary error {phone}: {e}")
+    except Exception as e:
+        app.logger.error(f"Daily summary job error: {e}")
+    app.logger.info(f"Daily summary complete - {sent} emails sent")
+
+
+def send_weekly_digests():
+    app.logger.info("Weekly digest job started")
+    today = datetime.now(timezone.utc).date()
+    week_start = today - timedelta(days=7)
+    sent = 0
+    try:
+        for user_doc in db.collection('users').stream():
+            phone = user_doc.id
+            if not phone.startswith('+'):
+                continue
+            try:
+                weeks = [
+                    r.to_dict() for r in
+                    db.collection('users').document(phone).collection('records').stream()
+                    if week_start.isoformat() <= (r.to_dict().get('timestampLocal') or '')[:10] <= today.isoformat()
+                ]
+                if not weeks:
+                    continue
+                email = get_user_email(phone)
+                if not email:
+                    continue
+                week_str = f"{week_start.strftime('%b %d')} - {today.strftime('%b %d, %Y')}"
+                html = build_weekly_email(phone, weeks, week_str)
+                if send_email(email, f"SOSLogs Weekly Digest - {week_str}", html):
+                    sent += 1
+            except Exception as e:
+                app.logger.error(f"Weekly digest error {phone}: {e}")
+    except Exception as e:
+        app.logger.error(f"Weekly digest job error: {e}")
+    app.logger.info(f"Weekly digest complete - {sent} emails sent")
+
+
+@app.route("/jobs/daily-summary", methods=["POST", "GET"])
+def trigger_daily_summary():
+    key = request.args.get('key', '')
+    if key != os.environ.get('CRON_SECRET', 'soslogs-cron-2026'):
+        return jsonify({"error": "Unauthorized"}), 403
+    threading.Thread(target=send_daily_summaries, daemon=True).start()
+    return jsonify({"status": "started"}), 200
+
+
+@app.route("/jobs/weekly-digest", methods=["POST", "GET"])
+def trigger_weekly_digest():
+    key = request.args.get('key', '')
+    if key != os.environ.get('CRON_SECRET', 'soslogs-cron-2026'):
+        return jsonify({"error": "Unauthorized"}), 403
+    threading.Thread(target=send_weekly_digests, daemon=True).start()
+    return jsonify({"status": "started"}), 200
+
+
+@app.route("/jobs/test-email", methods=["POST", "GET"])
+def test_email():
+    """Test endpoint to verify Zoho SMTP works."""
+    key = request.args.get('key', '')
+    if key != os.environ.get('CRON_SECRET', 'soslogs-cron-2026'):
+        return jsonify({"error": "Unauthorized"}), 403
+    to = request.args.get('to', ZOHO_EMAIL)
+    ok = send_email(to, "SOSLogs Email Test", "<h2>Email is working!</h2><p>Zoho SMTP is configured correctly.</p>")
+    return jsonify({"status": "ok" if ok else "failed"}), 200
+
 
 # ══════════════════════════════════════════════════════════════
 # HEALTH CHECK
