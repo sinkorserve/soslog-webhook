@@ -1014,6 +1014,64 @@ def test_email():
     return jsonify({"status": "ok" if ok else "failed"}), 200
 
 
+
+# ══════════════════════════════════════════════════════════════
+# MEDIA MODERATION
+# ══════════════════════════════════════════════════════════════
+
+@app.route("/moderate-media", methods=["POST", "OPTIONS"])
+def moderate_media():
+    if request.method == "OPTIONS":
+        return '', 204
+    data = request.get_json()
+    if not data:
+        return jsonify({"approved": False, "reason": "No data"}), 400
+
+    media_type  = data.get("media_type", "")
+    base64_data = data.get("base64_data", "")
+    phone       = data.get("phone", "")
+
+    if not base64_data or not media_type.startswith("image/"):
+        return jsonify({"approved": True}), 200
+
+    prompt = (
+        "Review this image for a legal documentation platform. "
+        "Respond with JSON only: {\"approved\": true/false, \"reason\": \"brief reason if rejected\"}. "
+        "Reject if: nudity, sexual content, graphic violence, gore, or illegal activity clearly depicted. "
+        "Approve if: workplace incidents, property damage, documents, text, everyday scenes, "
+        "injuries for medical documentation, anything relevant to legal documentation. "
+        "Be permissive — this is for legal documentation."
+    )
+
+    try:
+        import json as json_lib
+        message = claude_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=200,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": base64_data
+                        }
+                    },
+                    {"type": "text", "text": prompt}
+                ]
+            }]
+        )
+        result_text = message.content[0].text.strip().replace("```json","").replace("```","").strip()
+        result = json_lib.loads(result_text)
+        app.logger.info(f"Media moderation for {phone}: {result}")
+        return jsonify(result), 200
+    except Exception as e:
+        app.logger.error(f"Media moderation error: {e}")
+        return jsonify({"approved": False, "reason": "Moderation unavailable. Please try again."}), 500
+
+
 # ══════════════════════════════════════════════════════════════
 # HEALTH CHECK
 # ══════════════════════════════════════════════════════════════
