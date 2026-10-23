@@ -106,7 +106,7 @@ try:
         )
         _fitlogs_db = firestore.client(app=_fitlogs_app)
 except Exception as _e:
-    pass  # dual-write disabled if creds missing or error
+    app.logger.error(f"FitLogs Firebase init error: {_e}")
 
 # ══════════════════════════════════════════════════════════════
 # CLAUDE ANALYSIS ENGINE
@@ -526,7 +526,7 @@ def inbound_sms():
             user_ref.collection('sos').document(sid).set(record)
             app.logger.info(f"FitLogs dual-write: users/{phone}/texts/{sid} + sos/{sid}")
         except Exception as e:
-            app.logger.error(f"FitLogs dual-write error: {e}")
+            app.logger.error(f"FitLogs dual-write FAILED: {e}", exc_info=True)
 
     resp.message("🔒 Logged to your private journal.")
     return str(resp), 200, {"Content-Type": "text/xml"}
