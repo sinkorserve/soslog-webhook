@@ -105,8 +105,9 @@ try:
             name='fitlogs'
         )
         _fitlogs_db = firestore.client(app=_fitlogs_app)
+        print("FITLOGS_INIT: dual-write Firebase ready", flush=True)
 except Exception as _e:
-    app.logger.error(f"FitLogs Firebase init error: {_e}")
+    print(f"FITLOGS_INIT_ERROR: {_e}", flush=True)
 
 # ══════════════════════════════════════════════════════════════
 # CLAUDE ANALYSIS ENGINE
@@ -518,6 +519,7 @@ def inbound_sms():
 
     # -- FitLogs dual-write --
     # Always write to texts/ (full log) and sos/ (SOSLogs is always in sos mode)
+    print(f"FITLOGS_DB_STATUS: {'ready' if _fitlogs_db else 'None - skipping dual-write'}", flush=True)
     if _fitlogs_db:
         try:
             fitlogs_record = {**record, "mode": "sos", "source_app": "soslogs"}
@@ -526,7 +528,7 @@ def inbound_sms():
             user_ref.collection('sos').document(sid).set(record)
             app.logger.info(f"FitLogs dual-write: users/{phone}/texts/{sid} + sos/{sid}")
         except Exception as e:
-            app.logger.error(f"FitLogs dual-write FAILED: {e}", exc_info=True)
+            print(f"FITLOGS_WRITE_ERROR: {e}", flush=True)
 
     resp.message("🔒 Logged to your private journal.")
     return str(resp), 200, {"Content-Type": "text/xml"}
