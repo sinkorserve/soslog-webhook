@@ -39,6 +39,25 @@ import anthropic
 
 app = Flask(__name__)
 
+# -- FitLogs dual-write init --
+# Writes every inbound SMS to fitlogs-prod under users/{phone}/texts/ and users/{phone}/sos/
+# SOSLogs is always in "sos" mode by definition (all texts go to sos collection)
+_fitlogs_db = None
+try:
+    fitlogs_creds_json = os.environ.get("FITLOGS_FIREBASE_CREDENTIALS_JSON")
+    if fitlogs_creds_json:
+        import firebase_admin as _fa2
+        _fitlogs_app = _fa2.initialize_app(
+            credentials.Certificate(json.loads(fitlogs_creds_json)),
+            name='fitlogs'
+        )
+        _fitlogs_db = firestore.client(app=_fitlogs_app)
+        app.logger.info("FitLogs dual-write Firebase initialized")
+    else:
+        app.logger.warning("FITLOGS_FIREBASE_CREDENTIALS_JSON not set — dual-write disabled")
+except Exception as _e:
+    app.logger.error(f"FitLogs Firebase init error: {_e}")
+
 # Handle CORS manually — more reliable than flask-cors for Railway
 @app.after_request
 def add_cors_headers(response):
@@ -503,8 +522,19 @@ def inbound_sms():
     except Exception as e:
         app.logger.error(f"Firestore write failed: {e}")
 
-    # No immediate SMS reply for standard logs — user gets daily email summary
-    app.logger.info(f"Log saved for {phone} — daily email will be sent at 9 PM")
+    # -- FitLogs dual-write --
+    # Always write to texts/ (full log) and sos/ (SOSLogs is always in sos mode)
+    if _fitlogs_db:
+        try:
+            fitlogs_record = {**record, "mode": "sos", "source_app": "soslogs"}
+            user_ref = _fitlogs_db.collection('users').document(phone)
+            user_ref.collection('texts').document(sid).set(fitlogs_record)
+            user_ref.collection('sos').document(sid).set(record)
+            app.logger.info(f"FitLogs dual-write: users/{phone}/texts/{sid} + sos/{sid}")
+        except Exception as e:
+            app.logger.error(f"FitLogs dual-write error: {e}")
+
+    resp.message("🔒 Logged to your private journal.")
     return str(resp), 200, {"Content-Type": "text/xml"}
 
 # ══════════════════════════════════════════════════════════════
