@@ -39,25 +39,6 @@ import anthropic
 
 app = Flask(__name__)
 
-# -- FitLogs dual-write init --
-# Writes every inbound SMS to fitlogs-prod under users/{phone}/texts/ and users/{phone}/sos/
-# SOSLogs is always in "sos" mode by definition (all texts go to sos collection)
-_fitlogs_db = None
-try:
-    fitlogs_creds_json = os.environ.get("FITLOGS_FIREBASE_CREDENTIALS_JSON")
-    if fitlogs_creds_json:
-        import firebase_admin as _fa2
-        _fitlogs_app = _fa2.initialize_app(
-            credentials.Certificate(json.loads(fitlogs_creds_json)),
-            name='fitlogs'
-        )
-        _fitlogs_db = firestore.client(app=_fitlogs_app)
-        app.logger.info("FitLogs dual-write Firebase initialized")
-    else:
-        app.logger.warning("FITLOGS_FIREBASE_CREDENTIALS_JSON not set — dual-write disabled")
-except Exception as _e:
-    app.logger.error(f"FitLogs Firebase init error: {_e}")
-
 # Handle CORS manually — more reliable than flask-cors for Railway
 @app.after_request
 def add_cors_headers(response):
@@ -103,7 +84,7 @@ SMTP_HOST     = "smtp.zoho.com"
 SMTP_PORT     = 587
 twilio_client     = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-# -- Firebase init --
+# -- Firebase init (SOSLogs default app) --
 if not firebase_admin._apps:
     creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
     if creds_json:
@@ -113,6 +94,19 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+# -- FitLogs dual-write init (named app, initialized after default app) --
+_fitlogs_db = None
+try:
+    fitlogs_creds_json = os.environ.get("FITLOGS_FIREBASE_CREDENTIALS_JSON")
+    if fitlogs_creds_json:
+        _fitlogs_app = firebase_admin.initialize_app(
+            credentials.Certificate(json.loads(fitlogs_creds_json)),
+            name='fitlogs'
+        )
+        _fitlogs_db = firestore.client(app=_fitlogs_app)
+except Exception as _e:
+    pass  # dual-write disabled if creds missing or error
 
 # ══════════════════════════════════════════════════════════════
 # CLAUDE ANALYSIS ENGINE
